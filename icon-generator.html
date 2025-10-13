@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Freeview Icon Generator</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        canvas { border: 1px solid #ccc; margin: 10px; }
+        .icon-set { display: flex; flex-wrap: wrap; gap: 10px; }
+        button { padding: 10px 20px; margin: 10px 0; font-size: 16px; }
+        .generated { margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <h1>Freeview PWA Icon Generator</h1>
+    <p>This tool generates simple placeholder icons for your PWA.</p>
+    
+    <div>
+        <label>Icon Text: <input type="text" id="iconText" value="FV" maxlength="4"></label>
+        <label>Background Color: <input type="color" id="bgColor" value="#333333"></label>
+        <label>Text Color: <input type="color" id="textColor" value="#ffffff"></label>
+        <button onclick="generateIcons()">Generate Icons</button>
+        <button onclick="downloadAll()">Download All</button>
+    </div>
+    
+    <div class="generated" id="iconContainer"></div>
+
+    <script>
+        const sizes = [16, 32, 72, 96, 128, 144, 152, 192, 384, 512];
+        let generatedIcons = {};
+
+        function generateIcon(size, text, bgColor, textColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+            
+            // Background
+            ctx.fillStyle = bgColor;
+            ctx.fillRect(0, 0, size, size);
+            
+            // Text
+            ctx.fillStyle = textColor;
+            ctx.font = `bold ${size * 0.4}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, size / 2, size / 2);
+            
+            return canvas;
+        }
+
+        function generateIcons() {
+            const text = document.getElementById('iconText').value || 'FV';
+            const bgColor = document.getElementById('bgColor').value;
+            const textColor = document.getElementById('textColor').value;
+            const container = document.getElementById('iconContainer');
+            
+            container.innerHTML = '<h3>Generated Icons:</h3><div class="icon-set"></div>';
+            const iconSet = container.querySelector('.icon-set');
+            generatedIcons = {};
+            
+            sizes.forEach(size => {
+                const canvas = generateIcon(size, text, bgColor, textColor);
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = `<div>${size}×${size}</div>`;
+                wrapper.appendChild(canvas);
+                
+                // Add download link
+                const link = document.createElement('a');
+                link.download = `icon-${size}x${size}.png`;
+                link.href = canvas.toDataURL();
+                link.textContent = 'Download';
+                link.style.display = 'block';
+                wrapper.appendChild(link);
+                
+                iconSet.appendChild(wrapper);
+                generatedIcons[size] = canvas.toDataURL();
+            });
+        }
+
+        function downloadAll() {
+            Object.keys(generatedIcons).forEach(size => {
+                const link = document.createElement('a');
+                link.download = `icon-${size}x${size}.png`;
+                link.href = generatedIcons[size];
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
+        }
+
+        // Generate default icons on load
+        window.addEventListener('load', generateIcons);
+    </script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Freeview</title>
+
+<!-- PWA Meta Tags -->
+<meta name="description" content="A local image gallery viewer with lightbox, zoom, and touch support">
+<meta name="theme-color" content="#333333">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Freeview">
+<meta name="mobile-web-app-capable" content="yes">
+
+<!-- Apple Touch Icons -->
+<link rel="apple-touch-icon" sizes="152x152" href="icons/icon-152x152.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/icon-192x192.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="icons/icon-16x16.png">
+
+<!-- Web App Manifest -->
+<link rel="manifest" href="manifest.json">
+
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="sidebar"></div>
+
+<div id="main">
+  <div id="mainHeader">
+    <h1>Gallery</h1>
+    <div style="display:flex; align-items:center; flex-wrap: wrap; gap:5px;">
+      <select id="sortSelect">
+        <option value="newest">Newest → Oldest</option>
+        <option value="oldest">Oldest → Newest</option>
+        <option value="name-asc">Name A → Z</option>
+        <option value="name-desc">Name Z → A</option>
+        <option value="size-asc">Size: Small → Large</option>
+        <option value="size-desc">Size: Large → Small</option>
+      </select>
+      <button id="clearBtn">Clear</button>
+      <div id="loading"></div>
+    </div>
+  </div>
+  <input type="file" id="folderInput" webkitdirectory multiple style="margin:10px;">
+  <div id="gallery"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <div class="arrow left">&#10094;</div>
+  <img src="" alt="">
+  <div class="arrow right">&#10095;</div>
+
+  <!-- Mini-map and slider container -->
+  <div id="miniControls">
+    <canvas id="miniMap"></canvas>
+    <input type="range" id="zoomSlider" min="0.5" max="5" step="0.01" value="1">
+  </div>
+</div>
+
+<script src="gallery.js" defer></script>
+
+<!-- PWA Service Worker Registration -->
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(registration => {
+        console.log('SW registered: ', registration);
+        
+        // Handle updates
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content available, show update notification
+              if (confirm('New version available! Reload to update?')) {
+                newWorker.postMessage({ type: 'SKIP_WAITING' });
+                window.location.reload();
+              }
+            }
+          });
+        });
+      })
+      .catch(error => {
+        console.log('SW registration failed: ', error);
+      });
+  });
+}
+</script>
+</body>
+</html>
