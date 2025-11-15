@@ -1,742 +1,751 @@
-const folderInput = document.getElementById('folderInput');
-const gallery = document.getElementById('gallery');
-const sidebar = document.getElementById('sidebar');
-const loading = document.getElementById('loading');
-const lightbox = document.getElementById('lightbox');
-const lightboxImg = lightbox.querySelector('img');
-const leftArrow = lightbox.querySelector('.arrow.left');
-const rightArrow = lightbox.querySelector('.arrow.right');
-const sortSelect = document.getElementById('sortSelect');
-const main = document.getElementById('main');
-const clearBtn = document.getElementById('clearBtn');
-const miniMap = document.getElementById('miniMap');
-const titleElement = document.querySelector('#mainHeader h1');
-const thumbnailSizeSlider = document.getElementById('thumbnailSizeSlider');
-const lightboxZoomSlider = document.getElementById('lightboxZoomSlider');
-const miniControls = document.getElementById('miniControls');
-const statusBar = document.getElementById('statusBar');
-let isResizing = false;
-let startWidth;
-
-sidebarResizer.addEventListener('mousedown', (e) => {
-  isResizing = true;
-  startWidth = sidebar.offsetWidth;
-  document.body.style.cursor = 'ew-resize'; // Change cursor to indicate resizing
-  e.preventDefault(); // Prevent default drag behavior
-});
-
-document.addEventListener('mousemove', (e) => {
-  if (!isResizing) return;
-
-  const newWidth = startWidth + (e.clientX - sidebarResizer.getBoundingClientRect().left);
-  const minWidth = 100; // Minimum sidebar width
-  const maxWidth = 400; // Maximum sidebar width
-
-  const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
-
-  sidebar.style.width = `${clampedWidth}px`;
-  main.style.width = `calc(100% - ${clampedWidth}px)`; // Adjust main content width
-});
-
-document.addEventListener('mouseup', () => {
-  if (isResizing) {
-    isResizing = false;
-    document.body.style.cursor = ''; // Reset cursor
-  }
-});
-
-// Adjust main content width on initial load based on sidebar width
-function adjustMainWidth() {
-  const sidebarWidth = sidebar.offsetWidth;
-  main.style.width = `calc(100% - ${sidebarWidth}px)`;
-}
-
-// Call adjustMainWidth on initial load and when window resizes
-window.addEventListener('load', adjustMainWidth);
-window.addEventListener('resize', adjustMainWidth);
-
-// ---------- Folder Input ----------
-function handleFiles(files) {
-  if (!files.length) return;
-  loadFiles(files);
-}
-let imagesByFolder = {};
-let currentFolder = 'All Files';
-let currentIndex = 0;
-let currentImagesList = [];
-let currentThumbnailSize = parseInt(thumbnailSizeSlider.value); // Initialize with slider's default value
-
-// Lightbox state
-let scale = 1;
-let posX = 0;
-let posY = 0;
-let isDragging = false;
-let startX = 0;
-let startY = 0;
-let initialPosX = 0;
-let initialPosY = 0;
-
-// Touch state
-let initialDistance = 0;
-let initialScale = 1;
-
-// Throttle minimap updates for performance
-let minimapUpdateTimeout;
-
-function applyTransform() {
-  // Apply reasonable bounds to prevent infinite panning
-  const maxPan = Math.max(window.innerWidth, window.innerHeight) * 2;
-  posX = Math.max(-maxPan, Math.min(maxPan, posX));
-  posY = Math.max(-maxPan, Math.min(maxPan, posY));
-  
-  lightboxImg.style.transform = `translate(${posX}px, ${posY}px) scale(${scale})`;
-  
-  // Throttle minimap updates to improve performance
-  clearTimeout(minimapUpdateTimeout);
-  minimapUpdateTimeout = setTimeout(updateMiniMap, 16); // ~60fps
-}
-
-function fitImageToScreen() {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const imgWidth = lightboxImg.naturalWidth;
-  const imgHeight = lightboxImg.naturalHeight;
-  
-  console.log('fitImageToScreen: Viewport', viewportWidth, 'x', viewportHeight, '; Image', imgWidth, 'x', imgHeight);
-
-  if (!imgWidth || !imgHeight) return;
-  
-  // Calculate scale to fit image within 90% of viewport
-  const scaleX = (viewportWidth * 0.9) / imgWidth;
-  const scaleY = (viewportHeight * 0.9) / imgHeight;
-  console.log('fitImageToScreen: Calculated scaleX', scaleX, '; scaleY', scaleY);
-  scale = Math.min(scaleX, scaleY); // Allow scaling up to fit 90% of viewport
-  console.log('fitImageToScreen: Final scale', scale);
-  
-  // Center the image
-  posX = 0;
-  posY = 0;
-  
-  lightboxZoomSlider.value = scale;
-  applyTransform();
-}
-
-function sortImages(imgArray) {
-
-  const val = sortSelect.value;
-  let sorted = [...imgArray];
-  switch(val){
-    case 'newest': sorted.sort((a,b) => b.lastModified - a.lastModified); break;
-    case 'oldest': sorted.sort((a,b) => a.lastModified - b.lastModified); break;
-    case 'name-asc': sorted.sort((a,b) => a.name.localeCompare(b.name)); break;
-    case 'name-desc': sorted.sort((a,b) => b.name.localeCompare(a.name)); break;
-    case 'size-asc': sorted.sort((a,b) => a.size - b.size); break;
-    case 'size-desc': sorted.sort((a,b) => b.size - a.size); break;
-  }
-  return sorted;
-}
-
-// ---------- Sidebar ----------
-function renderSidebar() {
-  sidebar.innerHTML = '';
-  const allBtn = document.createElement('h2');
-  
-  const allIcon = document.createElement('span');
-  allIcon.classList.add('sidebar-icon');
-  allIcon.textContent = '🗀'; // Placeholder for SF Symbol-like icon
-  allBtn.appendChild(allIcon);
-
-  const allTextContent = document.createElement('div');
-  allTextContent.classList.add('sidebar-text-content');
-  const allTitle = document.createElement('span');
-  allTitle.classList.add('sidebar-title');
-  allTitle.textContent = 'All Files';
-  allTextContent.appendChild(allTitle);
-  const allSubtitle = document.createElement('span');
-  allSubtitle.classList.add('sidebar-subtitle');
-  allSubtitle.textContent = 'All your images';
-  allTextContent.appendChild(allSubtitle);
-  allBtn.appendChild(allTextContent);
-
-  allBtn.classList.toggle('active', currentFolder === 'All Files');
-  allBtn.addEventListener('click', () => { setFolder('All Files'); });
-  sidebar.appendChild(allBtn);
-
-  // Using a generic folder emoji as a placeholder for SF Symbols
-  const folderEmoji = '🗀'; 
-
-  Object.keys(imagesByFolder).sort().forEach(folder => {
-    const h = document.createElement('h2');
-    
-    const folderIcon = document.createElement('span');
-    folderIcon.classList.add('sidebar-icon');
-    folderIcon.textContent = folderEmoji; // Placeholder for SF Symbol-like icon
-    h.appendChild(folderIcon);
-
-    const folderTextContent = document.createElement('div');
-    folderTextContent.classList.add('sidebar-text-content');
-    const folderTitle = document.createElement('span');
-    folderTitle.classList.add('sidebar-title');
-    const folderName = folder.split('/').pop() || folder;
-    folderTitle.textContent = folderName;
-    folderTextContent.appendChild(folderTitle);
-    h.appendChild(folderTextContent);
-
-    h.classList.toggle('active', currentFolder === folder);
-    h.addEventListener('click', () => { setFolder(folder); });
-    sidebar.appendChild(h);
-  });
-}
-
-function setFolder(folder){
-  currentFolder = folder;
-  
-  // Update title based on current folder
-  if (folder === 'All Files') {
-    titleElement.textContent = 'All Files';
-  } else {
-    // Extract just the folder name from the full path
-    const folderName = folder.split('/').pop() || folder;
-    titleElement.textContent = folderName;
-  }
-  
-  gallery.innerHTML = '';
-  let imgs = folder === 'All Files' ? allImages : imagesByFolder[folder];
-  if(!imgs || imgs.length === 0) {
-    itemCount.textContent = '0 Items, 0 KB';
-    return;
-  }
-  imgs = sortImages(imgs);
-  imgs.forEach((file, index) => {
-    const container = document.createElement('div');
-    container.className = 'image-container';
-    container.style.maxWidth = `${currentThumbnailSize}px`; // Apply current thumbnail size
-    const img = document.createElement('img');
-    img.src = URL.createObjectURL(file);
-    img.alt = file.name;
-    img.loading = 'lazy';
-    img.onload = () => URL.revokeObjectURL(img.src);
-    container.appendChild(img);
-    container.addEventListener('click', () => openLightbox(index, imgs));
-    gallery.appendChild(container);
-  });
-  renderSidebar();
-  folderInput.style.display = allImages.length ? 'none' : 'block';
-  applyThumbnailSize(); // Apply thumbnail size after rendering gallery
-
-  // Update status bar
-  const totalBytes = imgs.reduce((sum, file) => sum + file.size, 0);
-  const formattedSize = `${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
-  itemCount.textContent = `${imgs.length} Items, ${formattedSize}`;
-}
-
-function applyThumbnailSize() {
-  const containers = gallery.querySelectorAll('.image-container');
-  containers.forEach(container => {
-    container.style.maxWidth = `${currentThumbnailSize}px`;
-  });
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function applyThumbnailSize() {
-  const containers = gallery.querySelectorAll('.image-container');
-  containers.forEach(container => {
-    container.style.maxWidth = `${currentThumbnailSize}px`;
-  });
-}
-
-// ---------- Lightbox Functions ----------
-function openLightbox(index, imagesArr) {
-  currentIndex = index;
-  currentImagesList = imagesArr;
-  lightbox.style.display = 'flex';
-  
-  const file = imagesArr[index];
-  
-  // Clean up previous data URL to prevent memory leak
-  if (lightboxImg.src && lightboxImg.src.startsWith('data:')) {
-    lightboxImg.src = '';
-  }
-  
-  const reader = new FileReader();
-  reader.onload = e => {
-    lightboxImg.src = e.target.result;
-    lightboxImg.onload = () => {
-      console.log('Lightbox image loaded. Natural dimensions:', lightboxImg.naturalWidth, 'x', lightboxImg.naturalHeight);
-      fitImageToScreen();
-    };
-  };
-  reader.readAsDataURL(file);
-}
-
-function closeLightbox() {
-  lightbox.style.display = 'none';
-  
-  // Clean up data URL to prevent memory leak
-  if (lightboxImg.src && lightboxImg.src.startsWith('data:')) {
-    lightboxImg.src = '';
-  }
-  
-  resetTransform();
-}
-
-function resetTransform() {
-  scale = 1;
-  posX = 0;
-  posY = 0;
-  isDragging = false;
-}
-
-function showNext() {
-  if (currentImagesList.length === 0) return;
-  currentIndex = (currentIndex + 1) % currentImagesList.length;
-  openLightbox(currentIndex, currentImagesList);
-}
-
-function showPrev() {
-  if (currentImagesList.length === 0) return;
-  currentIndex = (currentIndex - 1 + currentImagesList.length) % currentImagesList.length;
-  openLightbox(currentIndex, currentImagesList);
-}
-
-// ---------- Mouse Events ----------
-lightboxImg.addEventListener('mousedown', e => {
-  e.preventDefault();
-  isDragging = true;
-  startX = e.clientX;
-  startY = e.clientY;
-  initialPosX = posX;
-  initialPosY = posY;
-  lightboxImg.style.cursor = 'grabbing';
-});
-
-document.addEventListener('mousemove', e => {
-  if (!isDragging) return;
-  const dx = e.clientX - startX;
-  const dy = e.clientY - startY;
-  posX = initialPosX + dx;
-  posY = initialPosY + dy;
-  applyTransform();
-});
-
-document.addEventListener('mouseup', () => {
-  isDragging = false;
-  lightboxImg.style.cursor = 'grab';
-});
-
-// ---------- Mouse Wheel Zoom ----------
-lightboxImg.addEventListener('wheel', e => {
-  e.preventDefault();
-  
-  const delta = e.deltaY > 0 ? 0.9 : 1.1;
-  const oldScale = scale;
-  scale = Math.max(0.5, Math.min(5, scale * delta));
-  
-  // Get mouse position relative to viewport
-  const mouseX = e.clientX - window.innerWidth / 2;
-  const mouseY = e.clientY - window.innerHeight / 2;
-  
-  // Adjust position to zoom toward mouse cursor
-  const scaleChange = scale / oldScale;
-  posX = mouseX + (posX - mouseX) * scaleChange;
-  posY = mouseY + (posY - mouseY) * scaleChange;
-  
-  lightboxZoomSlider.value = scale;
-  applyTransform();
-});
-
-// ---------- Touch Events ----------
-function getDistance(touches) {
-  const dx = touches[0].clientX - touches[1].clientX;
-  const dy = touches[0].clientY - touches[1].clientY;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-function getCenter(touches) {
-  return {
-    x: (touches[0].clientX + touches[1].clientX) / 2,
-    y: (touches[0].clientY + touches[1].clientY) / 2
-  };
-}
-
-let lastTap = 0;
-
-lightboxImg.addEventListener('touchstart', e => {
-  if (e.touches.length === 1) {
-    const now = Date.now();
-    if (now - lastTap < 300) {
-      // Double tap detected
-      e.preventDefault();
-      fitImageToScreen();
-      lastTap = 0;
-      return;
-    }
-    lastTap = now;
-    
-    isDragging = true;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    initialPosX = posX;
-    initialPosY = posY;
-  } else if (e.touches.length === 2) {
-    e.preventDefault();
-    isDragging = false;
-    initialDistance = getDistance(e.touches);
-    initialScale = scale;
-    const center = getCenter(e.touches);
-    startX = center.x;
-    startY = center.y;
-    initialPosX = posX;
-    initialPosY = posY;
-  }
-});
-
-lightboxImg.addEventListener('touchmove', e => {
-  e.preventDefault();
-  
-  if (e.touches.length === 1 && isDragging) {
-    const dx = e.touches[0].clientX - startX;
-    const dy = e.touches[0].clientY - startY;
-    posX = initialPosX + dx;
-    posY = initialPosY + dy;
-    applyTransform();
-  } else if (e.touches.length === 2) {
-    const currentDistance = getDistance(e.touches);
-    const scaleChange = currentDistance / initialDistance;
-    scale = Math.max(0.5, Math.min(5, initialScale * scaleChange));
-    
-    const center = getCenter(e.touches);
-    const dx = center.x - startX;
-    const dy = center.y - startY;
-    posX = initialPosX + dx;
-    posY = initialPosY + dy;
-    
-    lightboxZoomSlider.value = scale;
-    applyTransform();
-  }
-});
-
-lightboxImg.addEventListener('touchend', e => {
-  if (e.touches.length === 0) {
-    isDragging = false;
-    initialDistance = 0;
-  } else if (e.touches.length === 1) {
-    // Continue with single touch
-    isDragging = true;
-    startX = e.touches[0].clientX;
-    startY = e.touches[0].clientY;
-    initialPosX = posX;
-    initialPosY = posY;
-  }
-});
-
-// ---------- Keyboard Navigation ----------
-document.addEventListener('keydown', e => {
-  if (lightbox.style.display !== 'flex') return;
-  
-  if (e.key === 'ArrowLeft') {
-    e.preventDefault();
-    showPrev();
-  } else if (e.key === 'ArrowRight') {
-    e.preventDefault();
-    showNext();
-  } else if (e.key === 'Escape') {
-    e.preventDefault();
-    closeLightbox();
-  }
-});
-
-// ---------- Lightbox Click to Close ----------
-lightbox.addEventListener('click', e => {
-  if (e.target === lightbox) {
-    closeLightbox();
-  }
-});
-
-lightboxImg.addEventListener('click', e => {
-  e.stopPropagation();
-});
-
-// ---------- Arrow Navigation ----------
-leftArrow.addEventListener('click', showPrev);
-rightArrow.addEventListener('click', showNext);
-
-// ---------- Lightbox Zoom Slider ----------
-lightboxZoomSlider.addEventListener('input', e => {
-  e.stopPropagation();
-  scale = parseFloat(e.target.value);
-  applyTransform();
-});
-
-lightboxZoomSlider.addEventListener('change', e => {
-  e.stopPropagation();
-});
-
-// ---------- Mini-map ----------
-let minimapDragging = false;
-
-miniMap.addEventListener('mousedown', e => {
-  e.stopPropagation();
-  minimapDragging = true;
-  updatePanFromMinimap(e.offsetX, e.offsetY);
-});
-
-miniMap.addEventListener('mousemove', e => {
-  if (!minimapDragging) return;
-  e.stopPropagation();
-  updatePanFromMinimap(e.offsetX, e.offsetY);
-});
-
-miniMap.addEventListener('mouseup', e => {
-  e.stopPropagation();
-  minimapDragging = false;
-});
-
-miniMap.addEventListener('mouseleave', () => {
-  minimapDragging = false;
-});
-
-miniMap.addEventListener('touchstart', e => {
-  e.stopPropagation();
-  e.preventDefault();
-  minimapDragging = true;
-  const rect = miniMap.getBoundingClientRect();
-  const touch = e.touches[0];
-  updatePanFromMinimap(touch.clientX - rect.left, touch.clientY - rect.top);
-});
-
-miniMap.addEventListener('touchmove', e => {
-  if (!minimapDragging) return;
-  e.stopPropagation();
-  e.preventDefault();
-  const rect = miniMap.getBoundingClientRect();
-  const touch = e.touches[0];
-  updatePanFromMinimap(touch.clientX - rect.left, touch.clientY - rect.top);
-});
-
-miniMap.addEventListener('touchend', e => {
-  e.stopPropagation();
-  e.preventDefault();
-  minimapDragging = false;
-});
-
-function updatePanFromMinimap(clickX, clickY) {
-  const canvasWidth = miniMap.width;
-  const canvasHeight = miniMap.height;
-  const scaledImgWidth = lightboxImg.naturalWidth * scale;
-  const scaledImgHeight = lightboxImg.naturalHeight * scale;
-  
-  // Convert click position to normalized coordinates (0 to 1)
-  const normalizedX = clickX / canvasWidth;
-  const normalizedY = clickY / canvasHeight;
-  
-  // Calculate target position (center the clicked point)
-  posX = -(normalizedX - 0.5) * scaledImgWidth;
-  posY = -(normalizedY - 0.5) * scaledImgHeight;
-  
-  applyTransform();
-}
-
-function updateMiniMap() {
-  const ctx = miniMap.getContext('2d');
-  if (!lightboxImg.naturalWidth || !lightboxImg.naturalHeight) return;
-  
-  const imgAspect = lightboxImg.naturalWidth / lightboxImg.naturalHeight;
-  
-  // Calculate canvas size to match image aspect ratio
-  const maxWidth = 150;
-  const maxHeight = 100;
-  let canvasWidth, canvasHeight;
-  
-  if (imgAspect > maxWidth / maxHeight) {
-    canvasWidth = maxWidth;
-    canvasHeight = maxWidth / imgAspect;
-  } else {
-    canvasHeight = maxHeight;
-    canvasWidth = maxHeight * imgAspect;
-  }
-  
-  // Set canvas size (this clears the canvas)
-  miniMap.width = canvasWidth;
-  miniMap.height = canvasHeight;
-  
-  // Draw the full image scaled to fit canvas
-  ctx.drawImage(lightboxImg, 0, 0, canvasWidth, canvasHeight);
-  
-  // Calculate viewport rectangle
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  const scaledImgWidth = lightboxImg.naturalWidth * scale;
-  const scaledImgHeight = lightboxImg.naturalHeight * scale;
-  
-  // Size of viewport relative to scaled image
-  const viewRectWidth = (viewportWidth / scaledImgWidth) * canvasWidth;
-  const viewRectHeight = (viewportHeight / scaledImgHeight) * canvasHeight;
-  
-  // Position of viewport (accounting for pan)
-  const viewRectX = (canvasWidth / 2) - (viewRectWidth / 2) - (posX / scaledImgWidth) * canvasWidth;
-  const viewRectY = (canvasHeight / 2) - (viewRectHeight / 2) - (posY / scaledImgHeight) * canvasHeight;
-  
-  // Draw viewport rectangle
-  ctx.strokeStyle = 'red';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(viewRectX, viewRectY, viewRectWidth, viewRectHeight);
-}
-
-// ---------- Folder Input ----------
-function handleFiles(files) {
-  if (!files.length) return;
-  loadFiles(files);
-}
-
-folderInput.addEventListener('change', e => {
-  const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
-  files.forEach(f => {
-    if (!f.relativePath) f.relativePath = f.webkitRelativePath || f.name;
-  });
-  handleFiles(files);
-});
-
-// ---------- Drag & Drop ----------
-function traverseFileTree(item, path = '') {
-  return new Promise(resolve => {
-    if (item.isFile) {
-      item.file(file => {
-        file.relativePath = path + file.name;
-        resolve([file]);
-      });
-    } else if (item.isDirectory) {
-      const dirReader = item.createReader();
-      dirReader.readEntries(async entries => {
-        const allFiles = [];
-        for (const e of entries) {
-          const subFiles = await traverseFileTree(e, path + item.name + '/');
-          allFiles.push(...subFiles);
+try {
+    // --- DOM Element Caching ---
+    const folderInput = document.getElementById('folderInput');
+    const folderInputLabel = document.querySelector('.folder-input-label');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarFoldersContainer = document.getElementById('sidebar-folders');
+    const sidebarResizer = document.getElementById('sidebar-resizer');
+    const mainContent = document.getElementById('main-content');
+    const currentFolderTitle = document.getElementById('current-folder-title');
+    const sortSelect = document.getElementById('sortSelect');
+    const clearBtn = document.getElementById('clearBtn');
+    const loadingIndicator = document.getElementById('loading');
+    const galleryContainer = document.getElementById('gallery');
+    const statusBar = document.getElementById('status-bar');
+    const itemCountDisplay = document.getElementById('itemCount');
+    const thumbnailSizeSlider = document.getElementById('thumbnailSizeSlider');
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = lightbox.querySelector('img');
+    const leftArrow = lightbox.querySelector('.arrow.left');
+    const rightArrow = lightbox.querySelector('.arrow.right');
+    const miniMapCanvas = document.getElementById('miniMap');
+    const lightboxZoomSlider = document.getElementById('lightboxZoomSlider');
+    const miniControlsContainer = document.getElementById('miniControls');
+    const connectedFolderInfo = document.getElementById('connectedFolderInfo'); // Added reference
+
+    // --- State Variables ---
+    let allImages = [];
+    let imagesByFolder = {};
+    let currentFolder = 'All Files';
+    let currentImagesList = [];
+    let currentThumbnailSize = parseInt(thumbnailSizeSlider.value);
+
+    // Lightbox state
+    let lightboxScale = 1;
+    let lightboxPosX = 0;
+    let lightboxPosY = 0;
+    let isLightboxDragging = false;
+    let startX = 0;
+    let startY = 0;
+    let initialPosX = 0;
+    let initialPosY = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+    let initialTouchDistance = 0;
+    let initialLightboxScale = 1;
+    let activeTouchPoints = [];
+
+    let minimapUpdateTimeout;
+    let currentIndex = 0;
+
+    // --- Initialization ---
+    window.addEventListener('DOMContentLoaded', () => {
+        console.log('DOMContentLoaded fired.');
+        // Initial setup of UI elements and event listeners
+        renderSidebarStructure();
+        setFolder('All Files'); // Load the default view
+        applyThumbnailSize();
+        setupEventListeners();
+        registerServiceWorker();
+
+        // Adjust layout and ensure proper scrolling
+        adjustLayout();
+        window.addEventListener('resize', adjustLayout);
+    });
+
+    // --- File Loading and Management ---
+
+    function handleFileSelection(files) {
+        console.log('Files selected in handleFileSelection:', files);
+        if (!files || files.length === 0) {
+            console.log('No files or empty selection in handleFileSelection.');
+            return;
         }
-        resolve(allFiles);
-      });
+        
+        const validFiles = Array.from(files)
+            .filter(f => {
+                console.log(`Processing file in handleFileSelection: ${f.name}, Type: ${f.type}, RelativePath: ${f.webkitRelativePath}`);
+                return f.type.startsWith('image/');
+            })
+            .map(f => {
+                f.displayPath = f.webkitRelativePath || f.name;
+                return f;
+            });
+
+        if (validFiles.length === 0) {
+            console.log('No valid image files found in handleFileSelection.');
+            alert('No image files were selected.');
+            return;
+        }
+        console.log('Valid image files in handleFileSelection:', validFiles);
+        loadFiles(validFiles);
     }
-  });
+
+    function loadFiles(files) {
+        console.log('Loading files in loadFiles:', files);
+        loadingIndicator.style.display = 'block';
+        galleryContainer.innerHTML = '';
+        imagesByFolder = {};
+        allImages = files;
+        currentFolder = 'All Files';
+
+        files.forEach(file => {
+            let folderPath = 'All Files';
+            if (file.displayPath && file.displayPath.includes('/')) {
+                const parts = file.displayPath.split('/');
+                parts.pop();
+                folderPath = parts.join('/');
+            }
+            if (!imagesByFolder[folderPath]) {
+                imagesByFolder[folderPath] = [];
+            }
+            imagesByFolder[folderPath].push(file);
+        });
+
+        console.log('Images organized by folder in loadFiles:', imagesByFolder);
+        setFolder(currentFolder);
+        renderSidebarStructure();
+        loadingIndicator.style.display = 'none';
+        folderInput.value = '';
+    }
+
+    function setFolder(folderName) {
+        currentFolder = folderName;
+        currentImagesList = folderName === 'All Files' ? allImages : imagesByFolder[folderName] || [];
+
+        currentFolderTitle.textContent = folderName === 'All Files' ? 'All Files' : folderName.split('/').pop() || folderName;
+
+        console.log(`Setting folder to: ${folderName}, Images to display in setFolder:`, currentImagesList);
+        renderGallery(currentImagesList);
+        renderSidebarStructure();
+        updateStatusBar();
+        
+        // Update the connected folder info
+        if (connectedFolderInfo) {
+            connectedFolderInfo.textContent = `Connected to: ${folderName === 'All Files' ? 'All Files' : folderName.split('/').pop() || folderName}`;
+        }
+    }
+
+    function renderGallery(images) {
+        console.log('Rendering gallery with images:', images);
+        galleryContainer.innerHTML = '';
+        if (!images || images.length === 0) {
+            galleryContainer.innerHTML = '<p class="empty-gallery-message">No images found.</p>';
+            console.log('Gallery is empty.');
+            return;
+        }
+
+        images.forEach((file, index) => {
+            const container = document.createElement('div');
+            container.className = 'image-container';
+            container.style.maxWidth = `${currentThumbnailSize}px`;
+            container.style.height = `${currentThumbnailSize}px`;
+
+            const img = document.createElement('img');
+            const objectUrl = URL.createObjectURL(file);
+            img.src = objectUrl;
+            img.alt = file.name;
+            img.loading = 'lazy';
+
+            img.onload = () => {
+                console.log(`Image loaded successfully: ${file.name}`);
+                URL.revokeObjectURL(objectUrl);
+                container.dataset.width = img.naturalWidth;
+                container.dataset.height = img.naturalHeight;
+            };
+            img.onerror = () => {
+                console.error(`Failed to load image: ${file.name}`);
+                URL.revokeObjectURL(objectUrl);
+                container.innerHTML = '<p>Error loading.</p>';
+            };
+
+            container.appendChild(img);
+            container.dataset.index = index;
+            container.addEventListener('click', () => openLightbox(index, images));
+            galleryContainer.appendChild(container);
+        });
+    }
+
+    function applyThumbnailSize() {
+        currentThumbnailSize = parseInt(thumbnailSizeSlider.value);
+        const containers = galleryContainer.querySelectorAll('.image-container');
+        containers.forEach(container => {
+            container.style.maxWidth = `${currentThumbnailSize}px`;
+            container.style.height = `${currentThumbnailSize}px`;
+        });
+    }
+
+    // --- Sidebar Rendering and Resizing ---
+
+    function renderSidebarStructure() {
+        sidebarFoldersContainer.innerHTML = '';
+
+        const allFilesFolder = createSidebarFolderElement('All Files', '🗀', 'All your images');
+        allFilesFolder.classList.toggle('active', currentFolder === 'All Files');
+        allFilesFolder.addEventListener('click', () => setFolder('All Files'));
+        sidebarFoldersContainer.appendChild(allFilesFolder);
+
+        Object.keys(imagesByFolder).sort().forEach(folderPath => {
+            const folderName = folderPath.split('/').pop() || folderPath;
+            const folder = createSidebarFolderElement(folderName, '🗀', `${imagesByFolder[folderPath].length} items`);
+            folder.dataset.folderPath = folderPath;
+            folder.classList.toggle('active', currentFolder === folderPath);
+            folder.addEventListener('click', () => setFolder(folderPath));
+            sidebarFoldersContainer.appendChild(folder);
+        });
+    }
+
+    function createSidebarFolderElement(name, icon, subtitle) {
+        const aTag = document.createElement('a');
+        aTag.href = '#';
+        aTag.classList.add('sidebar-item');
+        if (name === 'All Files') aTag.classList.add('active'); // Ensure 'All Files' is active by default
+
+        const iconSpan = document.createElement('span');
+        iconSpan.classList.add('sidebar-icon');
+        iconSpan.textContent = icon;
+        aTag.appendChild(iconSpan);
+
+        const textContentDiv = document.createElement('div');
+        textContentDiv.classList.add('sidebar-text-content');
+
+        const titleSpan = document.createElement('span');
+        titleSpan.classList.add('sidebar-title');
+        titleSpan.textContent = name;
+        titleSpan.title = name;
+        textContentDiv.appendChild(titleSpan);
+
+        const subtitleSpan = document.createElement('span');
+        subtitleSpan.classList.add('sidebar-subtitle');
+        subtitleSpan.textContent = subtitle;
+        textContentDiv.appendChild(subtitleSpan);
+
+        aTag.appendChild(textContentDiv);
+        return aTag;
+    }
+
+    // Sidebar resizer logic
+    let isResizing = false;
+    let startDragX = 0;
+    let sidebarWidth = 250;
+
+    sidebarResizer.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isResizing = true;
+        startDragX = e.clientX;
+        sidebarWidth = sidebar.offsetWidth;
+        document.body.style.cursor = 'ew-resize';
+        document.body.style.userSelect = 'none';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizing) return;
+        const deltaX = e.clientX - startDragX;
+        const newWidth = sidebarWidth + deltaX;
+        const minSidebarWidth = 100;
+        const maxSidebarWidth = 500;
+        const clampedWidth = Math.max(minSidebarWidth, Math.min(maxSidebarWidth, newWidth));
+        sidebar.style.width = `${clampedWidth}px`;
+        adjustLayout();
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+
+    // --- Layout Adjustment ---
+    function adjustLayout() {
+        const currentSidebarWidth = sidebar.offsetWidth;
+        const viewportWidth = window.innerWidth;
+        const mainContentMinWidth = 300;
+        const calculatedMainWidth = viewportWidth - currentSidebarWidth;
+        mainContent.style.width = `${Math.max(mainContentMinWidth, calculatedMainWidth)}px`;
+    }
+
+    // --- Status Bar Update ---
+    function updateStatusBar() {
+        const totalBytes = currentImagesList.reduce((sum, file) => sum + file.size, 0);
+        let formattedSize;
+        if (totalBytes < 1024) {
+            formattedSize = `${totalBytes} Bytes`;
+        } else if (totalBytes < 1024 * 1024) {
+            formattedSize = `${(totalBytes / 1024).toFixed(2)} KB`;
+        } else {
+            formattedSize = `${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
+        }
+        itemCountDisplay.textContent = `${currentImagesList.length} Items, ${formattedSize}`;
+    }
+
+    // --- Lightbox Functionality ---
+
+    function openLightbox(index, imagesArray) {
+        currentIndex = index;
+        currentImagesList = imagesArray;
+        lightbox.style.display = 'flex';
+
+        const file = imagesArray[index];
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            lightboxImg.src = e.target.result;
+            lightboxImg.onload = () => {
+                resetLightboxTransform();
+                lightboxZoomSlider.value = lightboxScale;
+                applyLightboxTransform();
+                fitImageToScreen();
+                updateMiniMap();
+            };
+            lightboxImg.onerror = () => {
+                console.error(`Lightbox failed to load image: ${file.name}`);
+                lightbox.style.display = 'none';
+            };
+        };
+        reader.onerror = () => {
+            console.error(`File reader error for ${file.name}`);
+            lightbox.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function closeLightbox() {
+        lightbox.style.display = 'none';
+        lightboxImg.src = '';
+        resetLightboxTransform();
+        clearTimeout(minimapUpdateTimeout);
+    }
+
+    function resetLightboxTransform() {
+        lightboxScale = 1;
+        lightboxPosX = 0;
+        lightboxPosY = 0;
+        isLightboxDragging = false;
+        activeTouchPoints = [];
+        lightboxImg.style.cursor = 'grab';
+    }
+
+    function fitImageToScreen() {
+        if (!lightboxImg.naturalWidth || !lightboxImg.naturalHeight) return;
+
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const imgWidth = lightboxImg.naturalWidth;
+        const imgHeight = lightboxImg.naturalHeight;
+
+        const scaleX = (viewportWidth * 0.9) / imgWidth;
+        const scaleY = (viewportHeight * 0.9) / imgHeight;
+
+        lightboxScale = Math.min(scaleX, scaleY);
+        lightboxPosX = 0;
+        lightboxPosY = 0;
+
+        lightboxZoomSlider.value = lightboxScale;
+        applyLightboxTransform();
+    }
+
+    function applyLightboxTransform() {
+        const imgWidth = lightboxImg.naturalWidth * lightboxScale;
+        const imgHeight = lightboxImg.naturalHeight * lightboxScale;
+        const viewportWidth = window.innerWidth * 0.9;
+        const viewportHeight = window.innerHeight * 0.9;
+
+        const maxX = Math.max(0, (imgWidth - viewportWidth) / 2);
+        const maxY = Math.max(0, (imgHeight - viewportHeight) / 2);
+
+        lightboxPosX = Math.max(-maxX, Math.min(maxX, lightboxPosX));
+        lightboxPosY = Math.max(-maxY, Math.min(maxY, lightboxPosY));
+
+        lightboxImg.style.transform = `translate(${lightboxPosX}px, ${lightboxPosY}px) scale(${lightboxScale})`;
+        updateMiniMap();
+    }
+
+    function showNextImage() {
+        if (currentImagesList.length === 0) return;
+        currentIndex = (currentIndex + 1) % currentImagesList.length;
+        openLightbox(currentIndex, currentImagesList);
+    }
+
+    function showPrevImage() {
+        if (currentImagesList.length === 0) return;
+        currentIndex = (currentIndex - 1 + currentImagesList.length) % currentImagesList.length;
+        openLightbox(currentIndex, currentImagesList);
+    }
+
+    // --- Minimap Handling ---
+
+    function updateMiniMap() {
+        const ctx = miniMapCanvas.getContext('2d');
+        if (!lightboxImg.naturalWidth || !lightboxImg.naturalHeight || !ctx) return;
+
+        const imgAspect = lightboxImg.naturalWidth / lightboxImg.naturalHeight;
+        const canvasMaxWidth = 150;
+        const canvasMaxHeight = 100;
+
+        let canvasWidth, canvasHeight;
+        if (imgAspect > canvasMaxWidth / canvasMaxHeight) {
+            canvasWidth = canvasMaxWidth;
+            canvasHeight = canvasMaxWidth / imgAspect;
+        } else {
+            canvasHeight = canvasMaxHeight;
+            canvasWidth = canvasMaxHeight * imgAspect;
+        }
+
+        miniMapCanvas.width = canvasWidth;
+        miniMapCanvas.height = canvasHeight;
+
+        ctx.drawImage(lightboxImg, 0, 0, canvasWidth, canvasHeight);
+
+        const scaledImgWidth = lightboxImg.naturalWidth * lightboxScale;
+        const scaledImgHeight = lightboxImg.naturalHeight * lightboxScale;
+
+        const viewRectWidth = (window.innerWidth * 0.9 / scaledImgWidth) * canvasWidth;
+        const viewRectHeight = (window.innerHeight * 0.9 / scaledImgHeight) * canvasHeight;
+
+        const viewRectX = (canvasWidth / 2) - (viewRectWidth / 2) - (lightboxPosX / scaledImgWidth) * canvasWidth;
+        const viewRectY = (canvasHeight / 2) - (viewRectHeight / 2) - (lightboxPosY / scaledImgHeight) * canvasHeight;
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(viewRectX, viewRectY, viewRectWidth, viewRectHeight);
+    }
+
+    function updatePanFromMinimap(clickX, clickY) {
+        const canvasWidth = miniMapCanvas.width;
+        const canvasHeight = miniMapCanvas.height;
+
+        if (!canvasWidth || !canvasHeight) return;
+
+        const normalizedX = clickX / canvasWidth;
+        const normalizedY = clickY / canvasHeight;
+
+        const scaledImgWidth = lightboxImg.naturalWidth * lightboxScale;
+        const scaledImgHeight = lightboxImg.naturalHeight * lightboxScale;
+
+        lightboxPosX = (0.5 - normalizedX) * scaledImgWidth;
+        lightboxPosY = (0.5 - normalizedY) * scaledImgHeight;
+
+        applyLightboxTransform();
+    }
+
+    // --- Event Listeners Setup ---
+
+    function setupEventListeners() {
+        folderInputLabel.addEventListener('click', () => folderInput.click());
+        folderInput.addEventListener('change', (e) => handleFileSelection(e.target.files));
+
+        mainContent.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            mainContent.classList.add('drag-over');
+        });
+        mainContent.addEventListener('dragleave', () => {
+            mainContent.classList.remove('drag-over');
+        });
+        mainContent.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            mainContent.classList.remove('drag-over');
+            if (e.dataTransfer.items) {
+                const items = Array.from(e.dataTransfer.items);
+                let droppedFiles = [];
+                for (const item of items) {
+                    const entry = item.webkitGetAsEntry();
+                    if (entry) {
+                        try {
+                            const files = await traverseFileTree(entry);
+                            droppedFiles.push(...files);
+                        } catch (error) {
+                            console.error("Error traversing file tree:", error);
+                        }
+                    }
+                }
+                handleFileSelection(droppedFiles);
+            }
+        });
+
+        sortSelect.addEventListener('change', () => {
+            setFolder(currentFolder);
+        });
+
+        clearBtn.addEventListener('click', () => {
+            if (lightbox.style.display === 'flex') {
+                closeLightbox();
+            }
+
+            allImages = [];
+            imagesByFolder = {};
+            currentFolder = 'All Files';
+            currentImagesList = [];
+            galleryContainer.innerHTML = '';
+            renderSidebarStructure();
+            currentFolderTitle.textContent = 'All Files';
+            itemCountDisplay.textContent = '0 Items, 0 KB';
+            folderInput.value = '';
+
+            if (window.gc) {
+                window.gc();
+            }
+        });
+
+        thumbnailSizeSlider.addEventListener('input', applyThumbnailSize);
+
+        leftArrow.addEventListener('click', showPrevImage);
+        rightArrow.addEventListener('click', showNextImage);
+        lightbox.addEventListener('click', (e) => {
+            if (e.target === lightbox) {
+                closeLightbox();
+            }
+        });
+        lightboxImg.addEventListener('click', (e) => e.stopPropagation());
+
+        lightboxImg.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isLightboxDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            initialPosX = lightboxPosX;
+            initialPosY = lightboxPosY;
+            lightboxImg.style.cursor = 'grabbing';
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (!isLightboxDragging) return;
+            const deltaX = e.clientX - startX;
+            const deltaY = e.clientY - startY;
+            lightboxPosX = initialPosX + deltaX;
+            lightboxPosY = initialPosY + deltaY;
+            applyLightboxTransform();
+        });
+        document.addEventListener('mouseup', () => {
+            isLightboxDragging = false;
+            lightboxImg.style.cursor = 'grab';
+        });
+
+        lightboxImg.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const zoomIntensity = 0.1;
+            const delta = e.deltaY > 0 ? -zoomIntensity : zoomIntensity;
+
+            const oldScale = lightboxScale;
+            lightboxScale = Math.max(0.5, Math.min(5, lightboxScale + delta));
+
+            const mouseXRelativeToCenter = e.clientX - window.innerWidth / 2;
+            const mouseYRelativeToCenter = e.clientY - window.innerHeight / 2;
+
+            const scaleChangeRatio = lightboxScale / oldScale;
+            lightboxPosX = mouseXRelativeToCenter + (lightboxPosX - mouseXRelativeToCenter) * scaleChangeRatio;
+            lightboxPosY = mouseYRelativeToCenter + (lightboxPosY - mouseXRelativeToCenter) * scaleChangeRatio;
+
+            lightboxZoomSlider.value = lightboxScale;
+            applyLightboxTransform();
+        });
+
+        let lastTapTime = 0;
+
+        lightboxImg.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+
+            if (e.touches.length === 1) {
+                const now = Date.now();
+                if (now - lastTapTime < 300) {
+                    fitImageToScreen();
+                    lastTapTime = 0;
+                    return;
+                }
+                lastTapTime = now;
+
+                isLightboxDragging = true;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                initialPosX = lightboxPosX;
+                initialPosY = lightboxPosY;
+            } else if (e.touches.length === 2) {
+                isLightboxDragging = false;
+                initialTouchDistance = getDistance(e.touches);
+                initialLightboxScale = lightboxScale;
+
+                const center = getTouchCenter(e.touches);
+                startX = center.x;
+                startY = center.y;
+                initialPosX = lightboxPosX;
+                initialPosY = lightboxPosY;
+                activeTouchPoints = Array.from(e.touches);
+            }
+        });
+
+        lightboxImg.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isLightboxDragging && e.touches.length === 1) {
+                const touch = e.touches[0];
+                const deltaX = touch.clientX - touchStartX;
+                const deltaY = touch.clientY - touchStartY;
+                lightboxPosX = initialPosX + deltaX;
+                lightboxPosY = initialPosY + deltaY;
+                applyLightboxTransform();
+            } else if (e.touches.length === 2) {
+                const currentTouchDistance = getDistance(e.touches);
+                const scaleChangeRatio = currentTouchDistance / initialTouchDistance;
+                lightboxScale = Math.max(0.5, Math.min(5, initialLightboxScale * scaleChangeRatio));
+
+                const currentCenter = getTouchCenter(e.touches);
+                const deltaX = currentCenter.x - startX;
+                const deltaY = currentCenter.y - startY;
+                lightboxPosX = initialPosX + deltaX;
+                lightboxPosY = initialPosY + deltaY;
+
+                lightboxZoomSlider.value = lightboxScale;
+                applyLightboxTransform();
+                activeTouchPoints = Array.from(e.touches);
+            }
+        });
+
+        lightboxImg.addEventListener('touchend', (e) => {
+            if (e.touches.length === 1) {
+                isLightboxDragging = true;
+                touchStartX = e.touches[0].clientX;
+                touchStartY = e.touches[0].clientY;
+                initialPosX = lightboxPosX;
+                initialPosY = lightboxPosY;
+                activeTouchPoints = Array.from(e.touches);
+            } else {
+                isLightboxDragging = false;
+                activeTouchPoints = [];
+            }
+        });
+
+        lightboxZoomSlider.addEventListener('input', (e) => {
+            e.stopPropagation();
+            lightboxScale = parseFloat(e.target.value);
+            applyLightboxTransform();
+        });
+
+        miniMapCanvas.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const rect = miniMapCanvas.getBoundingClientRect();
+            updatePanFromMinimap(e.clientX - rect.left, e.clientY - rect.top);
+        });
+         miniMapCanvas.addEventListener('mousemove', (e) => {
+            e.stopPropagation();
+            if(e.buttons === 1) {
+                const rect = miniMapCanvas.getBoundingClientRect();
+                updatePanFromMinimap(e.clientX - rect.left, e.clientY - rect.top);
+            }
+        });
+
+        miniMapCanvas.addEventListener('touchstart', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const rect = miniMapCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            updatePanFromMinimap(touch.clientX - rect.left, touch.clientY - rect.top);
+        });
+         miniMapCanvas.addEventListener('touchmove', (e) => {
+            e.stopPropagation();
+            e.preventDefault();
+            const rect = miniMapCanvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            updatePanFromMinimap(touch.clientX - rect.left, touch.clientY - rect.top);
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (lightbox.style.display !== 'flex') return;
+
+            if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                showPrevImage();
+            } else if (e.key === 'ArrowRight') {
+                e.preventDefault();
+                showNextImage();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeLightbox();
+            } else if (e.key === ' ') { 
+                e.preventDefault();
+                fitImageToScreen();
+            }
+        });
+    }
+
+    // --- File Tree Traversal for Drag and Drop ---
+
+    async function traverseFileTree(fileEntry) {
+        const files = [];
+        if (fileEntry.isFile) {
+            return new Promise(resolve => {
+                fileEntry.file((file) => {
+                    file.displayPath = fileEntry.fullPath.startsWith('/') ? fileEntry.fullPath.substring(1) : fileEntry.fullPath;
+                    resolve([file]);
+                }, (error) => console.error(`Error getting file: ${error}`);
+            });
+        } else if (fileEntry.isDirectory) {
+            const directoryReader = fileEntry.createReader();
+            let entries = [];
+            try {
+                entries = await readDirectoryEntries(directoryReader);
+                for (const entry of entries) {
+                    const subFiles = await traverseFileTree(entry);
+                    files.push(...subFiles);
+                }
+            } catch (error) {
+                console.error(`Error reading directory ${fileEntry.name}: ${error}`);
+            }
+            return files;
+        }
+        return files;
+    }
+
+    function readDirectoryEntries(directoryReader) {
+        return new Promise((resolve, reject) => {
+            directoryReader.readEntries((entries) => {
+                if (!entries || entries.length === 0) {
+                    resolve([]);
+                } else {
+                    resolve(entries);
+                }
+            }, reject);
+        });
+    }
+
+    // --- Service Worker Registration ---
+
+    function registerServiceWorker() {
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(registration => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+
+                        registration.addEventListener('updatefound', () => {
+                            const installingWorker = registration.installing;
+                            installingWorker.addEventListener('statechange', () => {
+                                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    if (confirm('New version of Freeview is available. Reload to update?')) {
+                                        installingWorker.postMessage({ type: 'SKIP_WAITING' });
+                                        window.location.reload();
+                                    }
+                                }
+                            });
+                        });
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            });
+        }
+    }
+
+} catch (error) {
+    console.error('An error occurred during gallery.js execution:', error);
 }
 
-main.addEventListener('dragover', e => {
-  e.preventDefault();
-  main.classList.add('drag-over');
-  
-  // Force dark mode styling if needed
-  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    main.style.backgroundColor = '#2a2a2a';
-    main.style.border = '3px dashed #666';
-  }
-});
-
-main.addEventListener('dragleave', () => {
-  main.classList.remove('drag-over');
-  // Clean up inline styles
-  main.style.backgroundColor = '';
-  main.style.border = '';
-});
-
-main.addEventListener('drop', async e => {
-  e.preventDefault();
-  main.classList.remove('drag-over');
-  // Clean up inline styles
-  main.style.backgroundColor = '';
-  main.style.border = '';
-  const items = [...e.dataTransfer.items];
-  let files = [];
-  for (const item of items) {
-    const entry = item.webkitGetAsEntry();
-    if (entry) {
-      const folderFiles = await traverseFileTree(entry);
-      files.push(...folderFiles);
-    }
-  }
-  files = files.filter(f => f.type.startsWith('image/'));
-  handleFiles(files);
-});
-
-// ---------- Clear ----------
-clearBtn.addEventListener('click', () => {
-  // Close lightbox and cleanup if open
-  if (lightbox.style.display === 'flex') {
-    closeLightbox();
-  }
-  
-  // Clear timeouts to prevent memory leaks
-  clearTimeout(minimapUpdateTimeout);
-  
-  allImages = [];
-  imagesByFolder = {};
-  currentFolder = 'All Files';
-  currentImagesList = [];
-  gallery.innerHTML = '';
-  sidebar.innerHTML = '';
-  folderInput.value = '';
-  folderInput.style.display = 'block';
-  titleElement.textContent = 'Gallery';
-  itemCount.textContent = '0 Items, 0 KB'; // Reset status bar
-  
-  // Force garbage collection hint (if available)
-  if (window.gc) {
-    window.gc();
-  }
-});
-
-// ---------- Sort Select ----------
-sortSelect.addEventListener('change', () => {
-  setFolder(currentFolder);
-});
-
-// ---------- Thumbnail Size Slider ----------
-thumbnailSizeSlider.addEventListener('input', e => {
-  currentThumbnailSize = parseInt(e.target.value);
-  applyThumbnailSize();
-});
-
-// ---------- Load Files ----------
-function loadFiles(files) {
-  loading.style.display = 'block';
-  gallery.innerHTML = '';
-  sidebar.innerHTML = '';
-  allImages = files;
-  imagesByFolder = {};
-
-  if (files.length === 0) {
-    itemCount.textContent = '0 Items, 0 KB';
-    loading.style.display = 'none';
-    return;
-  }
-
-  files.forEach(f => {
-    let folder = 'Root';
-    if (f.relativePath && f.relativePath.includes('/')) {
-      const parts = f.relativePath.split('/');
-      parts.pop();
-      folder = parts.join('/');
-    }
-    if (!imagesByFolder[folder]) imagesByFolder[folder] = [];
-    imagesByFolder[folder].push(f);
-  });
-
-  setFolder('All Files');
-  loading.style.display = 'none';
-}
-
-// Initial setup
-setFolder('All Files');
+console.log('gallery.js script execution finished (or caught an error).');
