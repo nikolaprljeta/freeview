@@ -122,6 +122,15 @@ tramp
 !.vscode/extensions.json
 
 # Backup files
+
 *.bak
+
 *.backup
+
 *.tmp
+
+
+
+# Feedback directory
+
+feedback/
