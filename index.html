@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Freeview - Image Gallery</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside id="sidebar">
+            <div class="sidebar-header">
+                <h3>Favourites</h3>
+            </div>
+            
+            <div class="sidebar-content">
+                <div class="sidebar-section">
+                    <input type="file" id="folderInput" webkitdirectory directory multiple style="display: none;">
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-section-header">Folders</div>
+                    <div id="sidebarFolders"></div>
+                </div>
+            </div>
+            
+            <div id="resizer"></div>
+        </aside>
+
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Header -->
+            <header id="header">
+                <div class="header-content">
+                    <h1 id="folderTitle">Freeview</h1>
+                    
+                    <div class="header-actions">
+                        <div class="header-status">
+                            <span id="connectionStatus"></span>
+                        </div>
+                        
+                        <input type="text" id="searchInput" placeholder="Search" class="search-input">
+                    </div>
+                </div>
+            </header>
+
+            <!-- Toolbar -->
+            <div id="toolbar">
+                <div class="toolbar-left">
+                    <span class="connection-label">Connected to:</span>
+                    <span id="connectedFolder" class="connection-value">None</span>
+                </div>
+                
+                <div class="toolbar-right">
+                    <label for="sortSelect">Sort by:</label>
+                    <select id="sortSelect">
+                        <option value="name-asc">Name (A-Z)</option>
+                        <option value="name-desc">Name (Z-A)</option>
+                        <option value="date-desc">Date (Newest First)</option>
+                        <option value="date-asc">Date (Oldest First)</option>
+                        <option value="size-asc">Size (Smallest First)</option>
+                        <option value="size-desc">Size (Largest First)</option>
+                    </select>
+                    <button id="connectBtn" class="btn-connect">Connect</button>
+                </div>
+            </div>
+
+            <!-- Gallery -->
+            <div id="gallery" class="drop-zone">
+                <div class="empty-state">
+                    <svg width="64" height="64" viewBox="0 0 64 64" fill="currentColor" opacity="0.3">
+                        <path d="M8 12a4 4 0 0 1 4-4h16l4 4h20a4 4 0 0 1 4 4v32a4 4 0 0 1-4 4H12a4 4 0 0 1-4-4V12z"/>
+                    </svg>
+                    <p>Drop a folder here or click "Select Folder" to begin</p>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loadingSpinner" class="loading-spinner" style="display: none;">
+                <div class="spinner">
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                    <div class="spinner-bar"></div>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <div id="statusBar">
+                <div class="status-left">
+                    <span id="itemCount">0 items</span>
+                    <span class="separator">•</span>
+                    <span id="totalSize">0 Bytes</span>
+                </div>
+                
+                <div class="status-right">
+                    <label for="thumbnailSize">Thumbnail Size:</label>
+                    <input type="range" id="thumbnailSize" min="100" max="300" value="180" step="10">
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox" style="display: none;">
+        <div class="lightbox-content">
+            <button class="lightbox-close">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </button>
+            
+            <button class="lightbox-nav lightbox-prev">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
+                    <path d="M20 24l-10-8 10-8z"/>
+                </svg>
+            </button>
+            
+            <div class="lightbox-image-container">
+                <img id="lightboxImage" src="" alt="">
+            </div>
+            
+            <button class="lightbox-nav lightbox-next">
+                <svg width="32" height="32" viewBox="0 0 32 32" fill="currentColor">
+                    <path d="M12 8l10 8-10 8z"/>
+                </svg>
+            </button>
+            
+            <div class="lightbox-controls">
+                <div class="lightbox-info">
+                    <span id="lightboxFilename"></span>
+                    <span class="separator">•</span>
+                    <span id="lightboxPosition"></span>
+                </div>
+                
+                <div class="lightbox-zoom">
+                    <label for="zoomSlider">Zoom:</label>
+                    <input type="range" id="zoomSlider" min="50" max="300" value="100" step="10">
+                    <span id="zoomLevel">100%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="gallery.js"></script>
+</body>
+</html>
