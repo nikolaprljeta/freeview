@@ -1,0 +1,160 @@
+Freeview Image Gallery Application Specification
+
+  1. Introduction
+
+  1.1. Application Name: Freeview
+
+  1.2. Purpose: Freeview is a lightweight, client-side image gallery application designed for local file
+  browsing. It allows users to select a folder containing images, view them as thumbnails, navigate
+  through subfolders, sort them, and view them in a full-screen lightbox with zoom capabilities. The
+  application prioritizes a clean user interface, smooth performance, and efficient memory management.
+
+  1.3. Target Audience: Users who need a simple, fast, and visually appealing way to browse local image
+  collections without uploading them to a server.
+
+  2. Core Features
+
+  2.1. Folder Loading:
+       * File Input: Users can select a folder using a standard file input element (<input type="file">)
+         with the webkitdirectory attribute enabled. This allows for the selection of entire directory
+         structures.
+       * Drag and Drop: Users can drag and drop a folder directly onto the application window to load its
+         contents.
+       * Recursive Scanning: The application will recursively scan the selected folder and all its
+         subfolders to identify image files.
+
+  2.2. Image File Handling:
+       * Supported Formats: The application will primarily support common image formats: .jpg, .jpeg,
+         .png, .gif, .webp, .svg, .bmp, .tiff.
+       * Filtering: Only files matching the supported image extensions will be processed.
+       * File Objects: The application will work with File objects obtained from the File API, utilizing
+         properties like name, size, lastModified, and webkitRelativePath.
+
+  2.3. Gallery Display:
+       * Thumbnail Grid: Images will be displayed in a grid layout using thumbnail previews.
+       * Dynamic Sizing: A slider control will allow users to adjust the size of the thumbnails, with the
+         change reflected in real-time.
+       * Lazy Loading: Native browser lazy loading (loading="lazy") will be implemented for all thumbnail
+         images to defer loading of off-screen images, improving initial load performance.
+       * Placeholder Message: If no images are found in a selected folder, a clear message will be
+         displayed.
+
+  2.4. Sidebar Navigation:
+       * Structure: A collapsible/resizable sidebar will display the loaded folder structure.
+       * "All Files" View: A default "All Files" entry will be present, showing all images from the root
+         folder and its subfolders.
+       * Subfolder Listing: All subfolders containing images will be listed dynamically.
+       * Active State: The currently selected folder/view in the sidebar will have a distinct visual
+         "active" state.
+       * Filtering: Clicking a subfolder in the sidebar will filter the main gallery to display only
+         images from that specific subfolder.
+       * Clearing: The "Clear" action will completely empty the sidebar of all folder entries.
+
+  2.5. Sorting:
+       * Controls: A dropdown menu will provide sorting options.
+       * Criteria: Sorting will be available by:
+           * Date (Newest First, Oldest First)
+           * Name (Alphabetical A-Z, Reverse Z-A)
+           * Size (Smallest First, Largest First)
+       * Application: Sorting will be applied to the currently displayed set of images (either "All Files"
+         or a specific subfolder).
+
+  2.6. Status Bar:
+       * Item Count: Displays the number of images currently visible in the gallery (e.g., "150 Items").
+       * Total Size: Displays the aggregate size of the currently visible images in a human-readable
+         format (e.g., "1.2 GB").
+       * Reset: Both count and size will reset to "0 Items" and "0 Bytes" respectively when the gallery is
+         cleared.
+
+  2.7. Lightbox Viewer:
+       * Activation: Clicking on a thumbnail opens the lightbox.
+       * Full-Screen Display: The selected image is displayed prominently.
+       * Navigation: Left and right arrow controls allow users to cycle through images within the current
+         gallery view.
+       * Zoom: A slider control enables zooming in and out of the displayed image.
+       * Keyboard Controls: Arrow keys for navigation and Escape key to close the lightbox.
+       * Memory Management: URL.createObjectURL will be used for image sources, and URL.revokeObjectURL
+         will be called to release memory when images are no longer needed (e.g., when closing the
+         lightbox, clearing the gallery, or loading new files).
+
+  2.8. Loading Indicator:
+       * Spinner: A visual spinner will be displayed within the gallery area when images are loading or
+         the gallery is being processed.
+       * Visibility: The spinner will be shown for a minimum duration (e.g., 200ms) to provide clear
+         visual feedback, even for very fast operations.
+
+  2.9. Theming:
+       * Light/Dark Mode: The application will support both light and dark themes.
+       * System Preference: The default theme will be determined by the user's operating system preference
+         (prefers-color-scheme media query).
+       * Dynamic Switching: The theme will update automatically if the system preference changes.
+
+  2.10. Clear Functionality:
+       * Reset State: A dedicated "Clear" button will reset the application to its initial, empty state.
+         This includes:
+           * Clearing the gallery display (gallery.innerHTML = '').
+           * Clearing the sidebar folder list (sidebarFolders.innerHTML = '').
+           * Resetting status bar counts and sizes to zero.
+           * Clearing the file input value.
+           * Resetting internal state variables (allImageFiles, currentImageFiles, rootFolderName).
+           * Displaying the initial prompt message in the gallery area.
+           * Ensuring all created object URLs are revoked.
+
+  3. User Interface (UI) & User Experience (UX)
+
+  3.1. Layout:
+       * A two-column layout:
+           * Left Pane: Sidebar (<aside id="sidebar">) containing folder navigation and controls.
+           * Right Pane: Main Content Area (<main id="main-content">) containing header, toolbar, gallery,
+             and status bar.
+       * Sidebar Resizability: The sidebar will have a resizer element to allow users to adjust its width.
+       * Header: Displays the current folder title.
+       * Toolbar: Contains sorting controls and the "Clear" button.
+       * Gallery: The primary area for displaying image thumbnails.
+       * Status Bar: Located at the bottom, showing item count, total size, and the thumbnail size slider.
+       * Lightbox: A modal overlay that appears over the main content.
+
+  3.2. Design Principles:
+       * Cleanliness: Minimalistic design, focusing on the images.
+       * Intuitiveness: Easy-to-understand controls and navigation.
+       * Responsiveness: While primarily desktop-oriented, elements should scale gracefully.
+       * Performance: Smooth scrolling, fast loading, and responsive interactions are paramount.
+       * Consistency: Uniform styling and behavior across all UI elements.
+
+  4. Technical Stack
+
+   * Language: JavaScript (ES6+)
+   * Markup: HTML5
+   * Styling: CSS3 (including CSS Variables)
+   * APIs: File API (File, FileList, FileReader), URL API (URL.createObjectURL, URL.revokeObjectURL),
+     window.matchMedia, requestAnimationFrame (potentially for smoother animations if needed).
+   * No external libraries are strictly required for core functionality.
+
+  5. Architecture
+
+   * Event-Driven: The application's logic is driven by user interactions (e.g., change on file input,
+     drop on document, click on sidebar items, input on sliders).
+   * DOM Manipulation: JavaScript dynamically creates, updates, and removes DOM elements to render the
+     gallery, sidebar, and lightbox.
+   * State Management: Global variables (allImageFiles, currentImageFiles, currentFolder, rootFolderName,
+     etc.) manage the application's state.
+   * Modular Functions: Code is organized into logical functions for specific tasks (e.g., renderGallery,
+     sortFiles, handleFolderSelection, closeLightbox).
+
+  6. Key Components
+
+   * `gallery.js`: The main JavaScript file orchestrating all application logic.
+   * `index.html`: The main HTML structure, including placeholders for dynamic content and links to
+     CSS/JS.
+   * `style.css`: Contains the primary styling for the application layout, themes, and components.
+
+  7. Future Enhancements (Optional)
+
+   * Image Metadata: Display EXIF data (camera model, date taken, etc.) in the lightbox.
+   * Basic Image Editing: Functionality for rotating, flipping, or cropping images.
+   * Search: Allow users to search for images by filename.
+   * Performance Optimization: Implement DOM virtualization for extremely large image sets to only render
+     visible items.
+   * Error Handling: More robust handling for file read errors or corrupted image files.
+   * PWA Features: Further integration as a Progressive Web App (as hinted by manifest/service worker
+     registration).
