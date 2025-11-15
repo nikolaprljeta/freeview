@@ -9,15 +9,62 @@ const rightArrow = lightbox.querySelector('.arrow.right');
 const sortSelect = document.getElementById('sortSelect');
 const main = document.getElementById('main');
 const clearBtn = document.getElementById('clearBtn');
-const zoomSlider = document.getElementById('zoomSlider');
 const miniMap = document.getElementById('miniMap');
 const titleElement = document.querySelector('#mainHeader h1');
+const thumbnailSizeSlider = document.getElementById('thumbnailSizeSlider');
+const lightboxZoomSlider = document.getElementById('lightboxZoomSlider');
+const miniControls = document.getElementById('miniControls');
+const statusBar = document.getElementById('statusBar');
+let isResizing = false;
+let startWidth;
 
-let allImages = [];
+sidebarResizer.addEventListener('mousedown', (e) => {
+  isResizing = true;
+  startWidth = sidebar.offsetWidth;
+  document.body.style.cursor = 'ew-resize'; // Change cursor to indicate resizing
+  e.preventDefault(); // Prevent default drag behavior
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!isResizing) return;
+
+  const newWidth = startWidth + (e.clientX - sidebarResizer.getBoundingClientRect().left);
+  const minWidth = 100; // Minimum sidebar width
+  const maxWidth = 400; // Maximum sidebar width
+
+  const clampedWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+  sidebar.style.width = `${clampedWidth}px`;
+  main.style.width = `calc(100% - ${clampedWidth}px)`; // Adjust main content width
+});
+
+document.addEventListener('mouseup', () => {
+  if (isResizing) {
+    isResizing = false;
+    document.body.style.cursor = ''; // Reset cursor
+  }
+});
+
+// Adjust main content width on initial load based on sidebar width
+function adjustMainWidth() {
+  const sidebarWidth = sidebar.offsetWidth;
+  main.style.width = `calc(100% - ${sidebarWidth}px)`;
+}
+
+// Call adjustMainWidth on initial load and when window resizes
+window.addEventListener('load', adjustMainWidth);
+window.addEventListener('resize', adjustMainWidth);
+
+// ---------- Folder Input ----------
+function handleFiles(files) {
+  if (!files.length) return;
+  loadFiles(files);
+}
 let imagesByFolder = {};
 let currentFolder = 'All Files';
 let currentIndex = 0;
 let currentImagesList = [];
+let currentThumbnailSize = parseInt(thumbnailSizeSlider.value); // Initialize with slider's default value
 
 // Lightbox state
 let scale = 1;
@@ -33,16 +80,9 @@ let initialPosY = 0;
 let initialDistance = 0;
 let initialScale = 1;
 
-// ---------- Prevent lightbox controls from closing ----------
-zoomSlider.addEventListener('mousedown', e => e.stopPropagation());
-zoomSlider.addEventListener('touchstart', e => e.stopPropagation());
-zoomSlider.addEventListener('click', e => e.stopPropagation());
-leftArrow.addEventListener('click', e => e.stopPropagation());
-rightArrow.addEventListener('click', e => e.stopPropagation());
-
-// ---------- Helper Functions ----------
 // Throttle minimap updates for performance
 let minimapUpdateTimeout;
+
 function applyTransform() {
   // Apply reasonable bounds to prevent infinite panning
   const maxPan = Math.max(window.innerWidth, window.innerHeight) * 2;
@@ -62,22 +102,27 @@ function fitImageToScreen() {
   const imgWidth = lightboxImg.naturalWidth;
   const imgHeight = lightboxImg.naturalHeight;
   
+  console.log('fitImageToScreen: Viewport', viewportWidth, 'x', viewportHeight, '; Image', imgWidth, 'x', imgHeight);
+
   if (!imgWidth || !imgHeight) return;
   
   // Calculate scale to fit image within 90% of viewport
   const scaleX = (viewportWidth * 0.9) / imgWidth;
   const scaleY = (viewportHeight * 0.9) / imgHeight;
-  scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 100%
+  console.log('fitImageToScreen: Calculated scaleX', scaleX, '; scaleY', scaleY);
+  scale = Math.min(scaleX, scaleY); // Allow scaling up to fit 90% of viewport
+  console.log('fitImageToScreen: Final scale', scale);
   
   // Center the image
   posX = 0;
   posY = 0;
   
-  zoomSlider.value = scale;
+  lightboxZoomSlider.value = scale;
   applyTransform();
 }
 
 function sortImages(imgArray) {
+
   const val = sortSelect.value;
   let sorted = [...imgArray];
   switch(val){
@@ -95,16 +140,48 @@ function sortImages(imgArray) {
 function renderSidebar() {
   sidebar.innerHTML = '';
   const allBtn = document.createElement('h2');
-  allBtn.textContent = 'All Files';
+  
+  const allIcon = document.createElement('span');
+  allIcon.classList.add('sidebar-icon');
+  allIcon.textContent = '🗀'; // Placeholder for SF Symbol-like icon
+  allBtn.appendChild(allIcon);
+
+  const allTextContent = document.createElement('div');
+  allTextContent.classList.add('sidebar-text-content');
+  const allTitle = document.createElement('span');
+  allTitle.classList.add('sidebar-title');
+  allTitle.textContent = 'All Files';
+  allTextContent.appendChild(allTitle);
+  const allSubtitle = document.createElement('span');
+  allSubtitle.classList.add('sidebar-subtitle');
+  allSubtitle.textContent = 'All your images';
+  allTextContent.appendChild(allSubtitle);
+  allBtn.appendChild(allTextContent);
+
   allBtn.classList.toggle('active', currentFolder === 'All Files');
   allBtn.addEventListener('click', () => { setFolder('All Files'); });
   sidebar.appendChild(allBtn);
 
+  // Using a generic folder emoji as a placeholder for SF Symbols
+  const folderEmoji = '🗀'; 
+
   Object.keys(imagesByFolder).sort().forEach(folder => {
     const h = document.createElement('h2');
-    // Extract just the folder name from the full path
+    
+    const folderIcon = document.createElement('span');
+    folderIcon.classList.add('sidebar-icon');
+    folderIcon.textContent = folderEmoji; // Placeholder for SF Symbol-like icon
+    h.appendChild(folderIcon);
+
+    const folderTextContent = document.createElement('div');
+    folderTextContent.classList.add('sidebar-text-content');
+    const folderTitle = document.createElement('span');
+    folderTitle.classList.add('sidebar-title');
     const folderName = folder.split('/').pop() || folder;
-    h.textContent = folderName;
+    folderTitle.textContent = folderName;
+    folderTextContent.appendChild(folderTitle);
+    h.appendChild(folderTextContent);
+
     h.classList.toggle('active', currentFolder === folder);
     h.addEventListener('click', () => { setFolder(folder); });
     sidebar.appendChild(h);
@@ -125,11 +202,15 @@ function setFolder(folder){
   
   gallery.innerHTML = '';
   let imgs = folder === 'All Files' ? allImages : imagesByFolder[folder];
-  if(!imgs) return;
+  if(!imgs || imgs.length === 0) {
+    itemCount.textContent = '0 Items, 0 KB';
+    return;
+  }
   imgs = sortImages(imgs);
   imgs.forEach((file, index) => {
     const container = document.createElement('div');
     container.className = 'image-container';
+    container.style.maxWidth = `${currentThumbnailSize}px`; // Apply current thumbnail size
     const img = document.createElement('img');
     img.src = URL.createObjectURL(file);
     img.alt = file.name;
@@ -141,6 +222,42 @@ function setFolder(folder){
   });
   renderSidebar();
   folderInput.style.display = allImages.length ? 'none' : 'block';
+  applyThumbnailSize(); // Apply thumbnail size after rendering gallery
+
+  // Update status bar
+  const totalBytes = imgs.reduce((sum, file) => sum + file.size, 0);
+  const formattedSize = `${(totalBytes / (1024 * 1024)).toFixed(2)} MB`;
+  itemCount.textContent = `${imgs.length} Items, ${formattedSize}`;
+}
+
+function applyThumbnailSize() {
+  const containers = gallery.querySelectorAll('.image-container');
+  containers.forEach(container => {
+    container.style.maxWidth = `${currentThumbnailSize}px`;
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function applyThumbnailSize() {
+  const containers = gallery.querySelectorAll('.image-container');
+  containers.forEach(container => {
+    container.style.maxWidth = `${currentThumbnailSize}px`;
+  });
 }
 
 // ---------- Lightbox Functions ----------
@@ -160,6 +277,7 @@ function openLightbox(index, imagesArr) {
   reader.onload = e => {
     lightboxImg.src = e.target.result;
     lightboxImg.onload = () => {
+      console.log('Lightbox image loaded. Natural dimensions:', lightboxImg.naturalWidth, 'x', lightboxImg.naturalHeight);
       fitImageToScreen();
     };
   };
@@ -238,7 +356,7 @@ lightboxImg.addEventListener('wheel', e => {
   posX = mouseX + (posX - mouseX) * scaleChange;
   posY = mouseY + (posY - mouseY) * scaleChange;
   
-  zoomSlider.value = scale;
+  lightboxZoomSlider.value = scale;
   applyTransform();
 });
 
@@ -308,7 +426,7 @@ lightboxImg.addEventListener('touchmove', e => {
     posX = initialPosX + dx;
     posY = initialPosY + dy;
     
-    zoomSlider.value = scale;
+    lightboxZoomSlider.value = scale;
     applyTransform();
   }
 });
@@ -325,17 +443,6 @@ lightboxImg.addEventListener('touchend', e => {
     initialPosX = posX;
     initialPosY = posY;
   }
-});
-
-// ---------- Zoom Slider ----------
-zoomSlider.addEventListener('input', e => {
-  e.stopPropagation();
-  scale = parseFloat(e.target.value);
-  applyTransform();
-});
-
-zoomSlider.addEventListener('change', e => {
-  e.stopPropagation();
 });
 
 // ---------- Keyboard Navigation ----------
@@ -368,6 +475,17 @@ lightboxImg.addEventListener('click', e => {
 // ---------- Arrow Navigation ----------
 leftArrow.addEventListener('click', showPrev);
 rightArrow.addEventListener('click', showNext);
+
+// ---------- Lightbox Zoom Slider ----------
+lightboxZoomSlider.addEventListener('input', e => {
+  e.stopPropagation();
+  scale = parseFloat(e.target.value);
+  applyTransform();
+});
+
+lightboxZoomSlider.addEventListener('change', e => {
+  e.stopPropagation();
+});
 
 // ---------- Mini-map ----------
 let minimapDragging = false;
@@ -572,6 +690,7 @@ clearBtn.addEventListener('click', () => {
   folderInput.value = '';
   folderInput.style.display = 'block';
   titleElement.textContent = 'Gallery';
+  itemCount.textContent = '0 Items, 0 KB'; // Reset status bar
   
   // Force garbage collection hint (if available)
   if (window.gc) {
@@ -584,6 +703,12 @@ sortSelect.addEventListener('change', () => {
   setFolder(currentFolder);
 });
 
+// ---------- Thumbnail Size Slider ----------
+thumbnailSizeSlider.addEventListener('input', e => {
+  currentThumbnailSize = parseInt(e.target.value);
+  applyThumbnailSize();
+});
+
 // ---------- Load Files ----------
 function loadFiles(files) {
   loading.style.display = 'block';
@@ -591,6 +716,12 @@ function loadFiles(files) {
   sidebar.innerHTML = '';
   allImages = files;
   imagesByFolder = {};
+
+  if (files.length === 0) {
+    itemCount.textContent = '0 Items, 0 KB';
+    loading.style.display = 'none';
+    return;
+  }
 
   files.forEach(f => {
     let folder = 'Root';
@@ -606,3 +737,6 @@ function loadFiles(files) {
   setFolder('All Files');
   loading.style.display = 'none';
 }
+
+// Initial setup
+setFolder('All Files');

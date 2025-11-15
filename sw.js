@@ -1,4 +1,4 @@
-const CACHE_NAME = 'freeview-v1.0.0';
+const CACHE_NAME = 'freeview-v1.2.2';
 const STATIC_CACHE_URLS = [
   '/',
   '/index.html',

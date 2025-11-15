@@ -29,11 +29,12 @@
 <body>
 
 <div id="sidebar"></div>
-
+<div id="sidebar-resizer"></div>
 <div id="main">
   <div id="mainHeader">
     <h1>Gallery</h1>
     <div style="display:flex; align-items:center; flex-wrap: wrap; gap:5px;">
+      <input type="file" id="folderInput" webkitdirectory multiple>
       <select id="sortSelect">
         <option value="newest">Newest → Oldest</option>
         <option value="oldest">Oldest → Newest</option>
@@ -46,8 +47,14 @@
       <div id="loading"></div>
     </div>
   </div>
-  <input type="file" id="folderInput" webkitdirectory multiple style="margin:10px;">
-  <div id="gallery"></div>
+  
+
+  <div id="statusBar">
+    <span id="itemCount">0 Items</span>
+    <div style="display:flex; align-items:center; gap:5px;">
+      <input type="range" id="thumbnailSizeSlider" min="100" max="300" value="200" step="10" style="width: 100px;">
+    </div>
+  </div>
 </div>
 
 <!-- Lightbox -->
@@ -59,7 +66,7 @@
   <!-- Mini-map and slider container -->
   <div id="miniControls">
     <canvas id="miniMap"></canvas>
-    <input type="range" id="zoomSlider" min="0.5" max="5" step="0.01" value="1">
+    <input type="range" id="lightboxZoomSlider" min="0.5" max="5" step="0.01" value="1" style="width: 150px;">
   </div>
 </div>
 
